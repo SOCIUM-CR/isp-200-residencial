@@ -1,0 +1,86 @@
+# =============================================================================
+# FreeRADIUS - users file
+# =============================================================================
+# Usuarios de prueba para el laboratorio ISP-200
+# Formato: usuario Cleartext-Password := "password"
+#          atributos de respuesta
+# =============================================================================
+
+# ============================================================================
+# PLAN RESIDENCIAL BASICO - 30 Mbps down / 10 Mbps up
+# ============================================================================
+
+user001 Cleartext-Password := "pass001"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "30M/10M",
+    Acct-Interim-Interval = 300
+
+user002 Cleartext-Password := "pass002"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "30M/10M",
+    Acct-Interim-Interval = 300
+
+user003 Cleartext-Password := "pass003"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "30M/10M",
+    Acct-Interim-Interval = 300
+
+# ============================================================================
+# PLAN RESIDENCIAL PREMIUM - 100 Mbps down / 50 Mbps up
+# ============================================================================
+
+user010 Cleartext-Password := "pass010"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "100M/50M",
+    Acct-Interim-Interval = 300
+
+user011 Cleartext-Password := "pass011"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "100M/50M",
+    Acct-Interim-Interval = 300
+
+# ============================================================================
+# PLAN GAMER - 200 Mbps down / 100 Mbps up (baja latencia)
+# ============================================================================
+
+user020 Cleartext-Password := "pass020"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "200M/100M",
+    Acct-Interim-Interval = 300
+
+# ============================================================================
+# USUARIOS DE PRUEBA GENERICOS
+# ============================================================================
+
+# Usuario de prueba simple
+test Cleartext-Password := "test123"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-Pool = "pppoe-pool",
+    Filter-Id = "10M/5M"
+
+# Usuario admin para diagnostico
+admin Cleartext-Password := "admin123"
+    Service-Type = Framed-User,
+    Framed-Protocol = PPP,
+    Framed-IP-Address = 100.64.100.250,
+    Filter-Id = "1000M/1000M"
+
+# ============================================================================
+# DEFAULT - Usuarios no definidos explicitamente
+# ============================================================================
+
+DEFAULT Auth-Type := Reject
+    Reply-Message = "Usuario no autorizado. Contacte soporte."

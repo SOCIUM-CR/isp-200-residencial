@@ -1,0 +1,295 @@
+# =============================================================================
+# ISP-200 RESIDENCIAL - Laboratorio Completo
+# =============================================================================
+# Arquitectura: 200 usuarios residenciales, 1 POP
+# Stack: FRRouting + accel-ppp + FreeRADIUS + CGNAT + Monitoreo
+# Plataforma: ARM64 (Apple Silicon M1/M2/M3/M4)
+# =============================================================================
+
+name: isp-200
+
+mgmt:
+  network: isp200-mgmt
+  ipv4-subnet: 172.20.0.0/24
+
+topology:
+  defaults:
+    kind: linux
+
+  kinds:
+    linux:
+      image: quay.io/frrouting/frr:8.4.1
+
+  nodes:
+    # =========================================================================
+    # CAPA DE BORDE - Edge/PE
+    # =========================================================================
+
+    # Simulador de Internet/Upstream Provider (AS 65000)
+    upstream-sim:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.10
+      binds:
+        - configs/frr/upstream-sim/frr.conf:/etc/frr/frr.conf
+        - configs/frr/upstream-sim/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.ipv6.conf.all.forwarding=1
+
+    # Edge Router - Punto de entrada al ISP (AS 65100)
+    edge-router:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.11
+      binds:
+        - configs/frr/edge-router/frr.conf:/etc/frr/frr.conf
+        - configs/frr/edge-router/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.ipv6.conf.all.forwarding=1
+
+    # =========================================================================
+    # CAPA CORE - Backbone interno
+    # =========================================================================
+
+    # Core Router - Backbone OSPF
+    core-router:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.12
+      binds:
+        - configs/frr/core-router/frr.conf:/etc/frr/frr.conf
+        - configs/frr/core-router/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.ipv6.conf.all.forwarding=1
+
+    # =========================================================================
+    # CAPA DE SERVICIOS - BNG + CGNAT
+    # =========================================================================
+
+    # BNG/BRAS - PPPoE Server (accel-ppp)
+    bng-pppoe:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.20.0.20
+      binds:
+        - configs/pppoe/accel-ppp.conf:/etc/accel-ppp/accel-ppp.conf
+        - scripts/setup-bng.sh:/setup-bng.sh
+      exec:
+        - chmod +x /setup-bng.sh
+        - /setup-bng.sh
+
+    # CGNAT Router - NAT444 con nftables
+    cgnat-router:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.20.0.21
+      binds:
+        - configs/cgnat/nftables.conf:/etc/nftables.conf
+        - scripts/setup-cgnat.sh:/setup-cgnat.sh
+      exec:
+        - chmod +x /setup-cgnat.sh
+        - /setup-cgnat.sh
+
+    # =========================================================================
+    # CAPA DE AGREGACION - Distribution
+    # =========================================================================
+
+    # Aggregation Router 1 (Zona Norte)
+    agg-1:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.30
+      binds:
+        - configs/frr/agg-1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/agg-1/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # Aggregation Router 2 (Zona Sur)
+    agg-2:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.31
+      binds:
+        - configs/frr/agg-2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/agg-2/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # =========================================================================
+    # CAPA DE ACCESO - OLT/Access Points simulados
+    # =========================================================================
+
+    # Access Router 1 - FTTH Sector A (~70 usuarios)
+    acc-1:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.40
+      binds:
+        - configs/frr/acc-1/frr.conf:/etc/frr/frr.conf
+        - configs/frr/acc-1/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # Access Router 2 - FTTH Sector B (~70 usuarios)
+    acc-2:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.41
+      binds:
+        - configs/frr/acc-2/frr.conf:/etc/frr/frr.conf
+        - configs/frr/acc-2/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # Access Router 3 - FTTH Sector C (~60 usuarios)
+    acc-3:
+      kind: linux
+      image: quay.io/frrouting/frr:8.4.1
+      mgmt-ipv4: 172.20.0.42
+      binds:
+        - configs/frr/acc-3/frr.conf:/etc/frr/frr.conf
+        - configs/frr/acc-3/daemons:/etc/frr/daemons
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+
+    # =========================================================================
+    # CLIENTES SIMULADOS - CPE/ONT
+    # =========================================================================
+
+    # CPE 1 - Cliente residencial Sector A
+    cpe-1:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.100
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # CPE 2 - Cliente residencial Sector A
+    cpe-2:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.101
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # CPE 3 - Cliente residencial Sector B
+    cpe-3:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.102
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # CPE 4 - Cliente residencial Sector B
+    cpe-4:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.103
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # CPE 5 - Cliente residencial Sector C
+    cpe-5:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.104
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # CPE 6 - Cliente residencial Sector C
+    cpe-6:
+      kind: linux
+      image: wbitt/network-multitool:alpine-extra
+      mgmt-ipv4: 172.20.0.105
+      exec:
+        - ip route del default 2>/dev/null || true
+
+    # =========================================================================
+    # SERVICIOS DE INFRAESTRUCTURA
+    # =========================================================================
+
+    # FreeRADIUS Server
+    radius:
+      kind: linux
+      image: freeradius/freeradius-server:latest
+      mgmt-ipv4: 172.20.0.50
+      binds:
+        - configs/radius/clients.conf:/etc/freeradius/clients.conf
+        - configs/radius/users:/etc/freeradius/users
+      ports:
+        - 1812:1812/udp
+        - 1813:1813/udp
+
+    # Prometheus - Metricas
+    prometheus:
+      kind: linux
+      image: prom/prometheus:latest
+      mgmt-ipv4: 172.20.0.60
+      binds:
+        - configs/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      ports:
+        - 9090:9090
+
+    # Grafana - Dashboards
+    grafana:
+      kind: linux
+      image: grafana/grafana:latest
+      mgmt-ipv4: 172.20.0.61
+      ports:
+        - 3000:3000
+      env:
+        GF_SECURITY_ADMIN_PASSWORD: admin123
+        GF_AUTH_ANONYMOUS_ENABLED: "true"
+
+  # ===========================================================================
+  # ENLACES DE RED
+  # ===========================================================================
+  links:
+    # --- BORDE: Upstream <-> Edge ---
+    - endpoints: ["upstream-sim:eth1", "edge-router:eth1"]
+
+    # --- CORE: Edge <-> Core ---
+    - endpoints: ["edge-router:eth2", "core-router:eth1"]
+
+    # --- SERVICIOS: Core <-> BNG ---
+    - endpoints: ["core-router:eth2", "bng-pppoe:eth1"]
+
+    # --- SERVICIOS: Core <-> CGNAT ---
+    - endpoints: ["core-router:eth3", "cgnat-router:eth1"]
+
+    # --- AGREGACION: Core <-> Agg-1 ---
+    - endpoints: ["core-router:eth4", "agg-1:eth1"]
+
+    # --- AGREGACION: Core <-> Agg-2 ---
+    - endpoints: ["core-router:eth5", "agg-2:eth1"]
+
+    # --- ACCESO: Agg-1 <-> Acc-1 ---
+    - endpoints: ["agg-1:eth2", "acc-1:eth1"]
+
+    # --- ACCESO: Agg-1 <-> Acc-2 ---
+    - endpoints: ["agg-1:eth3", "acc-2:eth1"]
+
+    # --- ACCESO: Agg-2 <-> Acc-3 ---
+    - endpoints: ["agg-2:eth2", "acc-3:eth1"]
+
+    # --- CPE: Acc-1 <-> CPE-1,2 ---
+    - endpoints: ["acc-1:eth2", "cpe-1:eth1"]
+    - endpoints: ["acc-1:eth3", "cpe-2:eth1"]
+
+    # --- CPE: Acc-2 <-> CPE-3,4 ---
+    - endpoints: ["acc-2:eth2", "cpe-3:eth1"]
+    - endpoints: ["acc-2:eth3", "cpe-4:eth1"]
+
+    # --- CPE: Acc-3 <-> CPE-5,6 ---
+    - endpoints: ["acc-3:eth2", "cpe-5:eth1"]
+    - endpoints: ["acc-3:eth3", "cpe-6:eth1"]
+
+    # --- SERVICIOS: BNG <-> RADIUS (red interna) ---
+    - endpoints: ["bng-pppoe:eth2", "radius:eth1"]
+
+    # --- CGNAT salida simulada hacia upstream ---
+    - endpoints: ["cgnat-router:eth2", "upstream-sim:eth2"]

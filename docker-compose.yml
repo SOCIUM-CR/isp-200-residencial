@@ -1,0 +1,348 @@
+# =============================================================================
+# ISP-200 RESIDENCIAL - Docker Compose Version (Simplified)
+# =============================================================================
+# Optimizado para macOS ARM64 (Apple Silicon)
+# =============================================================================
+
+networks:
+  # Red interna ISP (todo el trafico)
+  isp-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.192.0/20
+
+services:
+  # ===========================================================================
+  # CAPA DE BORDE
+  # ===========================================================================
+
+  upstream-sim:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-upstream
+    hostname: upstream-sim
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    volumes:
+      - ./configs/frr/upstream-sim/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/upstream-sim/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.1
+
+  edge-router:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-edge
+    hostname: edge-router
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    volumes:
+      - ./configs/frr/edge-router/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/edge-router/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.2
+    depends_on:
+      - upstream-sim
+
+  # ===========================================================================
+  # CAPA CORE
+  # ===========================================================================
+
+  core-router:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-core
+    hostname: core-router
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/core-router/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/core-router/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.3
+    depends_on:
+      - edge-router
+
+  # ===========================================================================
+  # CGNAT
+  # ===========================================================================
+
+  cgnat-router:
+    image: alpine:latest
+    container_name: isp200-cgnat
+    hostname: cgnat-router
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/cgnat/nftables.conf:/etc/nftables.conf
+      - ./scripts/setup-cgnat.sh:/setup-cgnat.sh
+    entrypoint: ["/bin/sh", "/setup-cgnat.sh"]
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.4
+    depends_on:
+      - core-router
+
+  # ===========================================================================
+  # CAPA DE AGREGACION
+  # ===========================================================================
+
+  agg-1:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-agg1
+    hostname: agg-1
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/agg-1/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/agg-1/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.10
+    depends_on:
+      - core-router
+
+  agg-2:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-agg2
+    hostname: agg-2
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/agg-2/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/agg-2/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.11
+    depends_on:
+      - core-router
+
+  # ===========================================================================
+  # CAPA DE ACCESO
+  # ===========================================================================
+
+  acc-1:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-acc1
+    hostname: acc-1
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/acc-1/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/acc-1/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.20
+    depends_on:
+      - agg-1
+
+  acc-2:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-acc2
+    hostname: acc-2
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/acc-2/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/acc-2/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.21
+    depends_on:
+      - agg-1
+
+  acc-3:
+    image: quay.io/frrouting/frr:8.4.1
+    container_name: isp200-acc3
+    hostname: acc-3
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./configs/frr/acc-3/frr.conf:/etc/frr/frr.conf
+      - ./configs/frr/acc-3/daemons:/etc/frr/daemons
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.22
+    depends_on:
+      - agg-2
+
+  # ===========================================================================
+  # CPE - CLIENTES SIMULADOS
+  # ===========================================================================
+
+  cpe-1:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe1
+    hostname: cpe-1
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.10
+    depends_on:
+      - acc-1
+
+  cpe-2:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe2
+    hostname: cpe-2
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.20
+    depends_on:
+      - acc-1
+
+  cpe-3:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe3
+    hostname: cpe-3
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.30
+    depends_on:
+      - acc-2
+
+  cpe-4:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe4
+    hostname: cpe-4
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.40
+    depends_on:
+      - acc-2
+
+  cpe-5:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe5
+    hostname: cpe-5
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.50
+    depends_on:
+      - acc-3
+
+  cpe-6:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-cpe6
+    hostname: cpe-6
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.201.60
+    depends_on:
+      - acc-3
+
+  # ===========================================================================
+  # SERVICIOS DE INFRAESTRUCTURA
+  # ===========================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: isp200-prometheus
+    hostname: prometheus
+    volumes:
+      - ./configs/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.100
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: isp200-grafana
+    hostname: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+    ports:
+      - "3000:3000"
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.101
+    depends_on:
+      - prometheus
+
+  # cAdvisor - Container metrics for Prometheus
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: isp200-cadvisor
+    hostname: cadvisor
+    privileged: true
+    ports:
+      - "9080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.102
+
+  # Traffic generator - simulates user traffic
+  traffic-gen:
+    image: wbitt/network-multitool:alpine-extra
+    container_name: isp200-traffic-gen
+    hostname: traffic-gen
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./scripts/traffic-generator.sh:/traffic-generator.sh
+    entrypoint: ["/bin/sh", "/traffic-generator.sh"]
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.200
+    depends_on:
+      - upstream-sim
