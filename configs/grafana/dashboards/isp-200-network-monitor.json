@@ -87,8 +87,8 @@
       "id": 1,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
@@ -104,9 +104,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(container_network_transmit_bytes_total{name=~\"isp200.*\"}[1m])",
+          "expr": "rate(container_network_transmit_bytes_total{interface=~\"br-.*|eth0|services1\"}[1m])",
           "instant": false,
-          "legendFormat": "{{name}}",
+          "legendFormat": "TX {{interface}}",
           "range": true,
           "refId": "A"
         }
@@ -179,8 +179,8 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
@@ -196,9 +196,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(container_network_receive_bytes_total{name=~\"isp200.*\"}[1m])",
+          "expr": "rate(container_network_receive_bytes_total{interface=~\"br-.*|eth0|services1\"}[1m])",
           "instant": false,
-          "legendFormat": "{{name}}",
+          "legendFormat": "RX {{interface}}",
           "range": true,
           "refId": "A"
         }
@@ -221,7 +221,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "dark-red",
+                "color": "dark-purple",
                 "value": null
               }
             ]
@@ -259,14 +259,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(container_network_transmit_bytes_total{name=~\"isp200.*\"})",
+          "expr": "sum(container_network_transmit_bytes_total{interface=~\"br-.*\"})",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Total Bytes Transmitted",
+      "title": "Total Bytes Transmitted (Bridges)",
       "type": "stat"
     },
     {
@@ -284,7 +284,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "dark-red",
+                "color": "dark-purple",
                 "value": null
               }
             ]
@@ -322,14 +322,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(container_network_receive_bytes_total{name=~\"isp200.*\"})",
+          "expr": "sum(container_network_receive_bytes_total{interface=~\"br-.*\"})",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Total Bytes Received",
+      "title": "Total Bytes Received (Bridges)",
       "type": "stat"
     },
     {
@@ -384,7 +384,7 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "Bps"
         },
         "overrides": []
       },
@@ -397,8 +397,8 @@
       "id": 5,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
@@ -414,14 +414,27 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"isp200.*\"}[1m])",
+          "expr": "rate(container_network_transmit_bytes_total{interface=~\"br-.*\"}[1m])",
           "instant": false,
-          "legendFormat": "{{name}}",
+          "legendFormat": "TX {{interface}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(container_network_receive_bytes_total{interface=~\"br-.*\"}[1m])",
+          "instant": false,
+          "hide": false,
+          "legendFormat": "RX {{interface}}",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "CPU Usage",
+      "title": "Bridge Network Traffic (ISP Lab)",
       "type": "timeseries"
     },
     {
@@ -489,8 +502,8 @@
       "id": 6,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
@@ -506,9 +519,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(container_network_transmit_bytes_total{name=~\"br-.*\"}[1m])",
+          "expr": "rate(container_network_transmit_bytes_total{interface=\"eth0\"}[1m])",
           "instant": false,
-          "legendFormat": "TX {{name}}",
+          "legendFormat": "TX eth0 (host)",
           "range": true,
           "refId": "A"
         },
@@ -518,16 +531,87 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(container_network_receive_bytes_total{name=~\"br-.*\"}[1m])",
+          "expr": "rate(container_network_receive_bytes_total{interface=\"eth0\"}[1m])",
           "instant": false,
           "hide": false,
-          "legendFormat": "RX {{name}}",
+          "legendFormat": "RX eth0 (host)",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Bridge Network Traffic (Docker)",
+      "title": "Host Network Traffic (eth0)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100000000
+              },
+              {
+                "color": "red",
+                "value": 500000000
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "container_network_transmit_bytes_total{interface=\"eth0\"}",
+          "instant": false,
+          "legendFormat": "TX Total",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Traffic (Host eth0)",
+      "type": "stat"
     },
     {
       "datasource": {
@@ -546,8 +630,8 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -555,8 +639,8 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -565,7 +649,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "none"
+              "mode": "normal"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -581,17 +665,17 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "pps"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 16
+        "x": 0,
+        "y": 20
       },
-      "id": 7,
+      "id": 8,
       "options": {
         "legend": {
           "calcs": [],
@@ -611,14 +695,27 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "container_memory_usage_bytes{name=~\"isp200.*\"}",
+          "expr": "rate(container_network_transmit_packets_total{interface=~\"br-.*\"}[1m])",
           "instant": false,
-          "legendFormat": "{{name}}",
+          "legendFormat": "TX pkts {{interface}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(container_network_receive_packets_total{interface=~\"br-.*\"}[1m])",
+          "instant": false,
+          "hide": false,
+          "legendFormat": "RX pkts {{interface}}",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Memory Usage",
+      "title": "Packets per Second (Bridges)",
       "type": "timeseries"
     }
   ],
@@ -627,7 +724,8 @@
   "tags": [
     "isp",
     "network",
-    "monitoring"
+    "monitoring",
+    "macos"
   ],
   "templating": {
     "list": [
@@ -659,6 +757,6 @@
   "timezone": "",
   "title": "ISP-200 Network Monitor",
   "uid": "isp200-network-monitor",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
