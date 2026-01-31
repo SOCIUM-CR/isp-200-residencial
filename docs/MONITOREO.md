@@ -100,36 +100,54 @@ Usuario: admin
 Password: admin123
 ```
 
-### Datasource
+### Datasource (Auto-provisioned)
 
-El datasource de Prometheus está preconfigurado:
+El datasource de Prometheus se configura automáticamente via provisioning:
 
 - **Nombre**: Prometheus
 - **URL**: http://192.168.200.100:9090
 - **Tipo**: Prometheus
+- **Archivo**: `configs/grafana/provisioning/datasources/prometheus.yml`
 
-### Verificar Datasource
+### Dashboard ISP-200 (Auto-provisioned)
 
-1. Ir a Configuration → Data Sources
-2. Click en "Prometheus"
-3. Click "Test" - debe mostrar "Data source is working"
+El dashboard **"ISP-200 Network Monitor"** se carga automáticamente al iniciar Grafana.
 
-### Dashboard ISP-200
+**Archivo**: `configs/grafana/dashboards/isp-200-network-monitor.json`
 
-Se incluye un dashboard preconfigurado con:
+**Paneles incluidos**:
 
-- **Network Traffic (TX)**: Tráfico de salida por contenedor
-- **Network Traffic (RX)**: Tráfico de entrada por contenedor
-- **CPU Usage**: Uso de CPU por contenedor
-- **Memory Usage**: Uso de memoria por contenedor
+| Panel | Tipo | Query |
+|-------|------|-------|
+| Network Traffic - Transmit Rate | Time series | `rate(container_network_transmit_bytes_total{name=~"isp200.*"}[1m])` |
+| Network Traffic - Receive Rate | Time series | `rate(container_network_receive_bytes_total{name=~"isp200.*"}[1m])` |
+| Total Bytes Transmitted | Stat | `sum(container_network_transmit_bytes_total{name=~"isp200.*"})` |
+| Total Bytes Received | Stat | `sum(container_network_receive_bytes_total{name=~"isp200.*"})` |
+| CPU Usage | Time series | `rate(container_cpu_usage_seconds_total{name=~"isp200.*"}[1m])` |
+| Bridge Network Traffic | Time series | `rate(container_network_*_bytes_total{name=~"br-.*"}[1m])` |
+| Memory Usage | Time series | `container_memory_usage_bytes{name=~"isp200.*"}` |
 
-### Crear Panel Manualmente
+### Estructura de Provisioning
+
+```
+configs/grafana/
+├── provisioning/
+│   ├── datasources/
+│   │   └── prometheus.yml      # Datasource Prometheus
+│   └── dashboards/
+│       └── dashboards.yml      # Configuración de carga
+└── dashboards/
+    └── isp-200-network-monitor.json   # Dashboard principal
+```
+
+### Crear Panel Adicional
 
 1. Click en "+" → "Dashboard" → "Add new panel"
 2. En Query, seleccionar datasource "Prometheus"
 3. Ingresar query (ver sección de queries)
 4. Ajustar visualización
 5. Guardar
+6. **Exportar JSON** y guardarlo en `configs/grafana/dashboards/` para persistir
 
 ---
 
@@ -377,4 +395,3 @@ gnmic:
     - ./gnmic.yml:/gnmic.yml
   command: subscribe --config /gnmic.yml
 ```
-
