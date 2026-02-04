@@ -16,6 +16,7 @@ Este laboratorio simula la infraestructura completa de un **Proveedor de Servici
 - [Inicio Rápido](#inicio-rápido)
 - [Componentes del Laboratorio](#componentes-del-laboratorio)
 - [Protocolos de Routing](#protocolos-de-routing)
+- [QoS - Traffic Shaping](#qos---traffic-shaping)
 - [Stack de Monitoreo](#stack-de-monitoreo)
 - [Comandos Útiles](#comandos-útiles)
 - [Estructura del Proyecto](#estructura-del-proyecto)
@@ -29,10 +30,12 @@ Este laboratorio simula la infraestructura completa de un **Proveedor de Servici
 - **BGP** con upstream provider (AS 65000 ↔ AS 65100)
 - **OSPF** como IGP interno con múltiples áreas
 - **CGNAT** implementado con nftables (RFC 6598)
+- **QoS/Traffic Shaping** con tc + HTB + fq_codel (alternativa a LibreQoS)
 - **6 CPEs** simulando la base de usuarios (~33 usuarios cada uno)
 - **Monitoreo completo** con Prometheus + Grafana + cAdvisor
+- **Dashboard QoS** con métricas de traffic shaping en tiempo real
 - **Generador de tráfico** para visualizar métricas en tiempo real
-- **17+ contenedores** corriendo simultáneamente
+- **21 contenedores** corriendo simultáneamente
 - **100% compatible** con macOS ARM64 (Apple Silicon)
 
 ---
@@ -164,13 +167,14 @@ docker compose up -d
 docker compose ps
 ```
 
-Deberías ver 17 contenedores en estado "running".
+Deberías ver **21 contenedores** en estado "running".
 
 ### 4. Acceder a servicios
 
 | Servicio | URL | Credenciales |
 |----------|-----|--------------|
-| Grafana | http://localhost:3000 | admin / admin123 |
+| Grafana | http://localhost:3000 | admin / admin |
+| Grafana - Dashboard QoS | http://localhost:3000/d/qos-traffic-shaping | admin / admin |
 | Prometheus | http://localhost:9090 | - |
 | cAdvisor | http://localhost:9080 | - |
 
@@ -236,6 +240,13 @@ docker exec isp200-cpe1 ping -c 3 192.168.200.1
 | isp200-cadvisor | 192.168.200.102 | 9080 | Métricas de contenedores |
 | isp200-traffic-gen | 192.168.200.200 | - | Generador de tráfico |
 
+### QoS y Testing
+
+| Contenedor | IP | Puerto | Función |
+|------------|-----|--------|---------|
+| isp200-qos-shaper | 192.168.200.50 | 9100 | Traffic shaping (tc + HTB + fq_codel) |
+| isp200-iperf3 | 192.168.200.51 | 5201 | Servidor iperf3 para tests de bandwidth |
+
 ---
 
 ## Protocolos de Routing
@@ -264,6 +275,82 @@ docker exec isp200-cpe1 ping -c 3 192.168.200.1
 | 0 (Backbone) | edge, core, agg-1, agg-2 | Interconexión principal |
 | 1 | acc-1, acc-2 | Zona Norte |
 | 2 | acc-3 | Zona Sur |
+
+---
+
+## QoS - Traffic Shaping
+
+El laboratorio incluye un sistema de QoS completo usando `tc` (traffic control) con HTB y fq_codel, como alternativa ligera a LibreQoS compatible con Docker/macOS.
+
+### Arquitectura QoS
+
+```
+                      ┌─────────────────┐
+                      │   UPSTREAM      │
+                      │  192.168.200.1  │
+                      └────────┬────────┘
+                               │
+                      ┌────────┴────────┐
+                      │   QOS-SHAPER    │  ◄── HTB + fq_codel
+                      │  192.168.200.50 │      Métricas → Prometheus
+                      └────────┬────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          │                    │                    │
+   ┌──────┴──────┐      ┌──────┴──────┐      ┌──────┴──────┐
+   │   ACC-1     │      │   ACC-2     │      │   ACC-3     │
+   └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
+          │                    │                    │
+    ┌─────┴─────┐        ┌─────┴─────┐        ┌─────┴─────┐
+    │CPE1  CPE2 │        │CPE3  CPE4 │        │CPE5  CPE6 │
+    │ 10M   10M │        │ 25M   25M │        │ 50M  100M │
+    └───────────┘        └───────────┘        └───────────┘
+```
+
+### Planes de Servicio
+
+| Plan | Classid | Download | Upload | CPEs |
+|------|---------|----------|--------|------|
+| Básico | 1:50 | 10 Mbps | 2 Mbps | CPE1, CPE2 |
+| Estándar | 1:40 | 25 Mbps | 5 Mbps | CPE3, CPE4 |
+| Premium | 1:30 | 50 Mbps | 10 Mbps | CPE5 |
+| Ultra | 1:20 | 100 Mbps | 20 Mbps | CPE6 |
+| VoIP (Prioritario) | 1:10 | 100 Mbps | - | Reservado |
+
+### Dashboard QoS en Grafana
+
+**URL:** http://localhost:3000/d/qos-traffic-shaping
+
+El dashboard muestra en tiempo real:
+- Tráfico por clase HTB (bytes/sec)
+- Paquetes dropeados por shaping
+- Eventos de overlimit (rate limiting activo)
+- Límites configurados por plan
+
+### Métricas Prometheus
+
+```promql
+# Tráfico por clase en Mbps
+rate(tc_class_bytes_total[1m]) * 8 / 1000000
+
+# Overlimits (shaping activo)
+increase(tc_class_overlimits_total[1m])
+
+# Drops por clase
+rate(tc_class_drops_total[1m])
+```
+
+### Test de Bandwidth
+
+```bash
+# Test desde CPE1 (debe limitarse a ~10 Mbps)
+docker exec isp200-cpe1 sh -c "apk add --no-cache iperf3 && iperf3 -c 192.168.200.51 -t 10"
+
+# Test desde CPE6 (hasta ~100 Mbps)
+docker exec isp200-cpe6 sh -c "apk add --no-cache iperf3 && iperf3 -c 192.168.200.51 -t 10"
+```
+
+> **Nota:** CAKE no está disponible en Docker (requiere módulo kernel). Se usa fq_codel como AQM alternativo con resultados similares para bufferbloat.
 
 ---
 
@@ -298,13 +385,24 @@ Proporciona métricas detalladas de cada contenedor:
 
 ### Grafana
 
-El dashboard "ISP-200 Network Monitor" incluye:
+**Dashboards disponibles:**
 
-- **Network Traffic - Transmit Rate**: Tráfico de salida en tiempo real
-- **Network Traffic - Receive Rate**: Tráfico de entrada en tiempo real
-- **Total Bytes Transmitted/Received**: Contadores acumulados
-- **CPU Usage**: Uso de CPU por contenedor
-- **Bridge Network Traffic**: Tráfico en bridges de Docker
+| Dashboard | URL | Contenido |
+|-----------|-----|-----------|
+| ISP-200 Network Monitor | /d/isp200-network-monitor | Tráfico de red, CPU, memoria |
+| QoS Traffic Shaping | /d/qos-traffic-shaping | Métricas de tc/HTB en tiempo real |
+
+**ISP-200 Network Monitor** incluye:
+- Network Traffic - Transmit/Receive Rate
+- Total Bytes Transmitted/Received
+- CPU Usage por contenedor
+- Bridge Network Traffic
+
+**QoS Traffic Shaping** incluye:
+- Tráfico por clase HTB (bytes/sec)
+- Dropped Packets por clase
+- Overlimits (eventos de rate limiting)
+- Configuración de límites (rate/ceil)
 
 ---
 
@@ -390,6 +488,28 @@ docker exec isp200-cgnat nft list ruleset
 docker exec isp200-cgnat cat /proc/net/nf_conntrack | head
 ```
 
+### QoS - Traffic Shaping
+
+```bash
+# Ver estadísticas del qdisc HTB
+docker exec isp200-qos-shaper tc -s qdisc show dev eth0
+
+# Ver estadísticas por clase
+docker exec isp200-qos-shaper tc -s class show dev eth0
+
+# Ver filtros de clasificación
+docker exec isp200-qos-shaper tc filter show dev eth0
+
+# Monitor en tiempo real (CLI)
+docker exec -it isp200-qos-shaper /qos-monitor.sh
+
+# Test de bandwidth desde CPE
+docker exec isp200-cpe1 sh -c "apk add --no-cache iperf3 && iperf3 -c 192.168.200.51 -t 10"
+
+# Ver métricas en Prometheus
+curl -s 'http://localhost:9090/api/v1/query?query=tc_class_bytes_total' | jq '.data.result'
+```
+
 ---
 
 ## Estructura del Proyecto
@@ -397,13 +517,14 @@ docker exec isp200-cgnat cat /proc/net/nf_conntrack | head
 ```
 labs/isp-200-residencial/
 ├── README.md                    # Este archivo
-├── docker-compose.yml           # Definición principal del lab
+├── docker-compose.yml           # Definición principal del lab (21 servicios)
 ├── docs/                        # Documentación detallada
 │   ├── README.md               # Índice de documentación
 │   ├── ARQUITECTURA.md         # Diseño de red detallado
 │   ├── CONFIGURACION-TECNICA.md # Configs de FRR, BGP, OSPF
 │   ├── OPERACIONES.md          # Guía de operaciones
-│   └── MONITOREO.md            # Stack de monitoreo
+│   ├── MONITOREO.md            # Stack de monitoreo
+│   └── QOS.md                  # Traffic shaping tc + HTB + fq_codel
 ├── configs/
 │   ├── frr/                    # Configuraciones FRRouting
 │   │   ├── upstream-sim/       # BGP AS 65000
@@ -415,16 +536,32 @@ labs/isp-200-residencial/
 │   │   ├── acc-2/              # OSPF
 │   │   └── acc-3/              # OSPF
 │   ├── cgnat/                  # nftables NAT config
-│   ├── pppoe/                  # PPPoE (referencia futura)
-│   ├── radius/                 # RADIUS (referencia futura)
-│   └── monitoring/             # prometheus.yml
+│   ├── qos/                    # Configuración QoS
+│   │   └── subscriber-plans.conf  # Planes por suscriptor
+│   ├── monitoring/             # prometheus.yml (incluye qos-shaper)
+│   └── grafana/
+│       ├── provisioning/
+│       │   ├── datasources/prometheus.yml  # UID fijo: prometheus
+│       │   └── dashboards/dashboards.yml
+│       └── dashboards/
+│           ├── isp-200-network-monitor.json
+│           └── qos-traffic-shaping.json    # Dashboard QoS
 ├── scripts/
 │   ├── traffic-generator.sh    # Generador de tráfico
-│   └── setup-cgnat.sh          # Setup del router CGNAT
+│   ├── setup-cgnat.sh          # Setup del router CGNAT
+│   ├── setup-qos.sh            # Auto-configura HTB + fq_codel + exporter
+│   ├── tc-exporter.sh          # Exporta métricas tc → Prometheus
+│   ├── qos-monitor.sh          # Monitor CLI tiempo real
+│   ├── apply-qos-access.sh     # Aplica QoS en routers de acceso
+│   └── test-qos-bandwidth.sh   # Tests de bandwidth
 └── pics/                       # Screenshots
     ├── grafana-dashboard.png
     ├── prometheus-query.png
     └── cadvisor-overview.png
+
+reportes/isp-200-residencial/    # Reportes operativos (fuera del lab)
+├── README.md
+└── 2026-02-03-implementacion-qos.md
 ```
 
 ---
@@ -439,6 +576,7 @@ Para información más detallada, consulta los documentos en `/docs/`:
 | [CONFIGURACION-TECNICA.md](./docs/CONFIGURACION-TECNICA.md) | Docker Compose, FRRouting, BGP, OSPF, CGNAT |
 | [OPERACIONES.md](./docs/OPERACIONES.md) | Comandos de gestión, troubleshooting, escenarios |
 | [MONITOREO.md](./docs/MONITOREO.md) | Prometheus, Grafana, queries PromQL |
+| [QOS.md](./docs/QOS.md) | Traffic shaping con tc + HTB + fq_codel, planes de servicio |
 
 ---
 
@@ -462,7 +600,7 @@ El laboratorio completo consume aproximadamente:
 | CPU | 2-4 vCPU |
 | RAM | 3-4 GB |
 | Disco | ~2 GB (imágenes) |
-| Contenedores | 17 |
+| Contenedores | 21 |
 
 ---
 
@@ -506,6 +644,7 @@ docker compose up -d --force-recreate <servicio>
 ## Licencia y Créditos
 
 - **Generado**: Enero 2026
+- **Última actualización**: Febrero 2026 (QoS implementado)
 - **Herramienta**: Claude Code (Anthropic)
-- **Stack**: FRRouting, Docker, Prometheus, Grafana
+- **Stack**: FRRouting, Docker, Prometheus, Grafana, tc/HTB
 - **Proyecto**: container-labs-project

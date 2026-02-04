@@ -20,3 +20,10 @@ scrape_configs:
       - targets: ['cadvisor:8080']
         labels:
           group: 'containers'
+
+  # QoS Shaper - tc/traffic control metrics
+  - job_name: 'qos-shaper'
+    static_configs:
+      - targets: ['qos-shaper:9100']
+        labels:
+          group: 'qos'

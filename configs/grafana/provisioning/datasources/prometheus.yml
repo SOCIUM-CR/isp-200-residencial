@@ -6,6 +6,7 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
+    uid: prometheus  # UID fijo para que los dashboards lo referencien
     access: proxy
     url: http://192.168.200.100:9090
     isDefault: true

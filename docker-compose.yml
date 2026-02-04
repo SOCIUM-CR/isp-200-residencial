@@ -351,3 +351,47 @@ services:
         ipv4_address: 192.168.200.200
     depends_on:
       - upstream-sim
+
+  # ===========================================================================
+  # QoS SHAPER - Traffic Shaping con tc + CAKE
+  # ===========================================================================
+  # Implementa traffic shaping similar a LibreQoS usando tc + CAKE/fq_codel
+  # Alternativa ligera a LibreQoS para entornos Docker/macOS
+
+  qos-shaper:
+    image: alpine:latest
+    container_name: isp200-qos-shaper
+    hostname: qos-shaper
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./scripts/setup-qos.sh:/setup-qos.sh
+      - ./scripts/qos-monitor.sh:/qos-monitor.sh
+      - ./scripts/tc-exporter.sh:/tc-exporter.sh
+      - ./configs/qos/subscriber-plans.conf:/etc/qos/subscriber-plans.conf
+    entrypoint: ["/bin/sh", "/setup-qos.sh"]
+    expose:
+      - "9100"
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.50
+    depends_on:
+      - core-router
+      - agg-1
+      - agg-2
+
+  # iperf3 server para tests de bandwidth
+  iperf3-server:
+    image: networkstatic/iperf3:latest
+    container_name: isp200-iperf3
+    hostname: iperf3-server
+    command: ["-s"]
+    networks:
+      isp-internal:
+        ipv4_address: 192.168.200.51
+    depends_on:
+      - upstream-sim
